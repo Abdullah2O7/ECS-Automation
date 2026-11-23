@@ -32,4 +32,4 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
       - name: Every test is found
-        run: npx playwright test --list --pass-with-no-tests
+        run: npx playwright test --list --reporter=line --pass-with-no-tests
