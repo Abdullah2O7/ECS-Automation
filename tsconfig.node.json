@@ -1,0 +1,9 @@
+{
+  // The scripts that run as TypeScript straight in Node (npm run dashboard, story:new, team:setup, sql...). Node only
+  // strips the types, so these files - and everything they import - may not use syntax that needs compiling
+  // (constructor parameter properties, enums, namespaces). `npm run typecheck` checks it.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "erasableSyntaxOnly": true, "noEmit": true },
+  "include": ["src/scripts/dashboard/**/*.ts", "src/scripts/team/**/*.ts", "src/scripts/story/**/*.ts", "src/scripts/story/check-stories.ts", "src/scripts/run-sql.ts", "src/scripts/clean-runtime.ts"],
+  "exclude": []
+}

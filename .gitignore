@@ -1,0 +1,18 @@
+.env
+node_modules
+test-output
+# Runtime state is per workspace and disposable - the folder is kept, its contents are not
+runtime/**
+!runtime/.gitkeep
+# Excel's lock files of an open workbook
+~$*.xlsx
+.playwright-mcp/
+.claude/settings.local.json
+debug.log
+.vs/
+# Your verdicts on the dashboard are requests to Claude from this computer; what Claude changes for them is shared
+tests/pages/*/review.json
+# Files the operating system leaves in folders
+Thumbs.db
+desktop.ini
+.DS_Store

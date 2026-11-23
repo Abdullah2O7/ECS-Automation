@@ -1,0 +1,1131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECS Test Dashboard</title>
+<script>
+  // Applied before the page is drawn, so a chosen theme never flashes the other one first
+  try { const theme = localStorage.getItem('theme'); if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme; } catch { /* storage may be blocked */ }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,500&display=swap" rel="stylesheet">
+<style>
+  /* ECS test console: a calm clinic-like page. Deep teal band on top, warm paper ground, white
+     cards; Newsreader for titles and the pass rates, Hanken Grotesk for everything else. Teal is the one action colour;
+     status colours always come with a word. Dark mode is a deep teal-black. */
+  :root {
+    color-scheme: light;
+    --bg: #faf7f2; --panel: #ffffff; --raised: #f6f2ea; --ink: #12262a; --muted: #46585c; --line: #ddd6c9; --line-strong: #7b8a8b; --accent: #0f6b66; --accent-hover: #0a524e; --accent-ink: #ffffff; --accent-bg: #dff0ec; --focus: #1553c4;
+    --passed: #0b6b5d; --failed: #b3261e; --blocked: #735c00; --blocked-mark: #e6b800; --running: #1d5b86; --notrun: #5b6b6e; --na: #6e3a7a; --on-failed: #ffffff;
+    --passed-bg: #dcf1ec; --failed-bg: #fbe3e0; --blocked-bg: #fff3bf; --running-bg: #dcebf6; --notrun-bg: #f1ece3; --na-bg: #f1e2f3;
+    --code: #f1ece3; --shadow: 0 1px 2px rgba(18, 38, 42, .08); --shadow-lift: 0 8px 24px rgba(18, 38, 42, .10);
+    --radius: 16px; --radius-sm: 10px; --band: #0d4a46; --band-ink: #ffffff; --band-line: rgba(255, 255, 255, .38);
+    --display: Newsreader, Georgia, "Times New Roman", serif; --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0e181a; --panel: #162428; --raised: #1b2c30; --ink: #eef1ec; --muted: #b2bfbd; --line: #243639; --line-strong: #6d8183; --accent: #5fc9bf; --accent-hover: #86dad2; --accent-ink: #062321; --accent-bg: #14393a; --focus: #8fb8ff;
+      --passed: #6fd6bb; --failed: #ff9d94; --blocked: #f5d547; --blocked-mark: #f2cc2e; --running: #8fc4ec; --notrun: #93a3a2; --na: #dcaee6; --on-failed: #2b0f0c;
+      --passed-bg: #12352f; --failed-bg: #3c1c1a; --blocked-bg: #3b3310; --running-bg: #14293a; --notrun-bg: #1f3135; --na-bg: #2f1d35;
+      --code: #0a1214; --shadow: 0 1px 2px rgba(0, 0, 0, .4); --shadow-lift: 0 8px 24px rgba(0, 0, 0, .45); --band: #11524d; --band-ink: #ffffff; --band-line: rgba(255, 255, 255, .38);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0e181a; --panel: #162428; --raised: #1b2c30; --ink: #eef1ec; --muted: #b2bfbd; --line: #243639; --line-strong: #6d8183; --accent: #5fc9bf; --accent-hover: #86dad2; --accent-ink: #062321; --accent-bg: #14393a; --focus: #8fb8ff;
+    --passed: #6fd6bb; --failed: #ff9d94; --blocked: #f5d547; --blocked-mark: #f2cc2e; --running: #8fc4ec; --notrun: #93a3a2; --na: #dcaee6; --on-failed: #2b0f0c;
+    --passed-bg: #12352f; --failed-bg: #3c1c1a; --blocked-bg: #3b3310; --running-bg: #14293a; --notrun-bg: #1f3135; --na-bg: #2f1d35;
+    --code: #0a1214; --shadow: 0 1px 2px rgba(0, 0, 0, .4); --shadow-lift: 0 8px 24px rgba(0, 0, 0, .45); --band: #11524d; --band-ink: #ffffff; --band-line: rgba(255, 255, 255, .38);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 "Hanken Grotesk", system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; cursor: pointer; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  header :focus-visible { outline-color: #ffffff; }
+  code { font-size: 12px; font-family: var(--mono); background: var(--code); padding: 1px 6px; border-radius: 5px; }
+
+  /* top bar */
+  header { display: flex; align-items: center; gap: 18px; min-height: 64px; padding: 0 22px; background: var(--band); color: var(--band-ink); border-bottom: 0; position: sticky; top: 0; z-index: 5; }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .brand .crest { width: 32px; height: 32px; border-radius: 50%; background: var(--band-ink); color: var(--band); font-family: var(--display); display: grid; place-items: center; font-weight: 700; font-size: 15px; letter-spacing: -.02em; }
+  .brand h1 { font-family: var(--display); font-size: 18px; margin: 0; font-weight: 500; letter-spacing: -.005em; white-space: nowrap; }
+  .brand .conn { font-size: 12px; color: var(--band-ink); opacity: .85; display: flex; align-items: center; gap: 6px; }
+  .totals { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; justify-content: center; }
+  .hdr-actions { display: flex; gap: 8px; align-items: center; }
+  .team { display: inline-flex; gap: 8px; align-items: center; font-size: 12px; white-space: nowrap; }
+  .team .ok { opacity: .9; }
+  .files { columns: 2; column-gap: 24px; margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; }
+  .files li { break-inside: avoid; }
+  @media (max-width: 900px) { .files { columns: 1; } }
+  header .btn, header a.btn { background: transparent; border-color: var(--band-line); color: var(--band-ink); }
+  header .btn.ghost { border-color: transparent; color: var(--band-ink); }
+  header .btn:hover:not(:disabled), header .btn.ghost:hover:not(:disabled) { border-color: var(--band-ink); background: rgba(255, 255, 255, .08); color: var(--band-ink); }
+
+  /* side navigation: stays in view while the page scrolls; its foot runs the pages ticked in it */
+  .layout { display: grid; grid-template-columns: 284px 1fr; min-height: calc(100vh - 64px); padding-bottom: 42px; }
+  nav { background: var(--panel); border-right: 1px solid var(--line); position: sticky; top: 64px; align-self: start; height: calc(100vh - 64px - 42px); display: flex; flex-direction: column; }
+  .nav-scroll { flex: 1; overflow: auto; padding: 14px 12px; }
+  nav h2 { font-size: 12px; font-weight: 700; color: var(--muted); margin: 18px 10px 6px; display: flex; justify-content: space-between; align-items: center; }
+  .linkbtn { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 700; }
+  .linkbtn:hover { text-decoration: underline; }
+  .nav-row { display: grid; grid-template-columns: 26px 1fr; align-items: start; border-radius: var(--radius-sm); margin-bottom: 2px; }
+  .nav-row.picked { background: var(--accent-bg); }
+  .nav-pick { display: flex; justify-content: center; padding-top: 12px; cursor: pointer; }
+  .nav-pick input { width: 15px; height: 15px; margin: 0; cursor: pointer; accent-color: var(--accent); }
+  .nav-pick input:disabled { cursor: not-allowed; }
+  .nav-row .nav-item { padding-left: 4px; }
+  .order { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-right: 6px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; vertical-align: 1px; }
+  .qtag { font-size: 11px; font-weight: 700; color: var(--running); background: var(--running-bg); border-radius: 99px; padding: 1px 8px; white-space: nowrap; }
+  .nav-run { border-top: 1px solid var(--line); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--panel); }
+  .nav-run .row { gap: 8px; }
+  .nav-run .btn.primary { flex: 1; justify-content: center; }
+  .nav-item { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 9px 10px; border-radius: var(--radius-sm); margin-bottom: 2px; }
+  .nav-item:hover { background: var(--raised); }
+  .nav-item.active { background: var(--accent-bg); box-shadow: inset 0 0 0 1px var(--accent); }
+  .nav-item .t { font-weight: 700; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .nav-item .s { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 2px; }
+  .nav-item .s > span { white-space: nowrap; }
+  .nav-item .s b { font-weight: 700; }
+  .s .ok { color: var(--passed); } .s .ko { color: var(--failed); } .s .bl { color: var(--blocked); }
+
+  main { padding: 24px 28px 32px; min-width: 0; max-width: 1400px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .between { justify-content: space-between; }
+  h2.title { margin: 0; font-family: var(--display); font-size: 32px; line-height: 1.15; font-weight: 500; letter-spacing: -.01em; }
+  h3.section { margin: 32px 0 12px; font-family: var(--display); font-size: 20px; font-weight: 500; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  .meta { color: var(--muted); font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
+
+  /* pills, bars */
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .pill.passed { background: var(--passed-bg); color: var(--passed); }
+  .pill.failed { background: var(--failed-bg); color: var(--failed); }
+  .pill.blocked { background: var(--blocked-bg); color: var(--blocked); box-shadow: inset 0 0 0 1px var(--blocked-mark); }
+  .pill.running { background: var(--running-bg); color: var(--running); }
+  .pill.notrun { background: var(--notrun-bg); color: var(--notrun); }
+  .pill.notapplicable { background: var(--na-bg); color: var(--na); }
+  .pill.plain { background: var(--notrun-bg); color: var(--ink); }
+  .bar { display: flex; height: 6px; border-radius: 99px; overflow: hidden; background: var(--notrun-bg); gap: 2px; }
+  .bar > span { display: block; height: 100%; transition: width .3s; }
+  .bar .passed { background: var(--passed); } .bar .failed { background: var(--failed); } .bar .blocked { background: var(--blocked-mark); } .bar .running { background: var(--running); } .bar .notapplicable { background: var(--na); opacity: .45; }
+
+  /* buttons */
+  .btn { border: 1px solid var(--line-strong); background: var(--panel); padding: 7px 16px; border-radius: 999px; font-weight: 600; transition: background-color .15s, border-color .15s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover:not(:disabled) { border-color: var(--accent); }
+  a.btn { color: var(--ink); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  .btn.ghost:hover:not(:disabled) { color: var(--ink); background: var(--raised); }
+  .btn.danger { background: var(--failed); border-color: var(--failed); color: var(--on-failed); }
+  .btn.small { padding: 4px 10px; font-size: 12px; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .choice { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+  .guide-head { margin-bottom: 14px; } .guide-head p { max-width: 72ch; margin: 6px 0 0; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
+  .switch input { appearance: none; width: 32px; height: 18px; border-radius: 99px; background: var(--notrun-bg); border: 1px solid var(--line); position: relative; cursor: pointer; margin: 0; transition: background .15s; }
+  .switch input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+  .switch input:checked { background: var(--accent); border-color: var(--accent); }
+  .switch input:checked::after { transform: translateX(14px); background: var(--accent-ink); }
+
+  /* the pass rate: share of the cases that ran which passed */
+  .rate { display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
+  .rate .pct { font-family: var(--display); font-size: 42px; font-weight: 500; letter-spacing: -.01em; line-height: 1; }
+  .rate .pct small { font-size: .5em; font-weight: 700; color: var(--muted); margin-left: 2px; }
+  .rate .of { font-size: 13px; color: var(--muted); }
+  .rate .of b { color: var(--ink); font-weight: 700; }
+  .rate.right { text-align: right; align-items: flex-end; }
+  .rate.right .pct { font-size: 48px; }
+  .tally { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); }
+  .tally b { font-weight: 700; }
+  .tally .ok b { color: var(--passed); } .tally .ko b { color: var(--failed); } .tally .bl b { color: var(--blocked); }
+
+  /* overview */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .page-card { cursor: pointer; display: flex; flex-direction: column; gap: 14px; }
+  .page-card { transition: box-shadow .15s, border-color .15s; }
+  .page-card:hover { border-color: var(--accent); box-shadow: var(--shadow-lift); }
+  .page-card .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .page-card .head strong { font-family: var(--display); font-size: 20px; font-weight: 500; line-height: 1.25; }
+  .story { font-size: 12px; font-weight: 700; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; white-space: nowrap; }
+
+  /* page view */
+  .page-head { display: grid; grid-template-columns: 1fr auto; gap: 18px 24px; align-items: end; }
+  .page-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+  .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 22px 0 12px; }
+  .segments { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+  .segments button { border: 0; background: none; padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--muted); display: inline-flex; gap: 7px; align-items: center; }
+  .segments button .n { font-variant-numeric: tabular-nums; color: var(--ink); }
+  .segments button:hover { background: var(--raised); }
+  .segments button.active { background: var(--accent-bg); color: var(--ink); }
+  .prio-pick.compact button { padding: 3px 9px; font-size: 12px; }
+  .segments .dotk { width: 8px; height: 8px; border-radius: 50%; }
+  input[type=search] { padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--panel); color: var(--ink); min-width: 260px; flex: 1; max-width: 380px; font: inherit; }
+
+  .banner { border-radius: var(--radius); padding: 14px 16px; margin: 0 0 18px; border: 1px solid var(--line); background: var(--panel); }
+  .banner.error { background: var(--failed-bg); border-color: var(--failed); }
+  .banner.run { border-color: var(--accent); box-shadow: var(--shadow); }
+  .banner.warn { background: var(--blocked-bg); border-color: var(--blocked-mark); }
+  .story-panel { margin: 14px 18px 0; }
+  .story-panel input[type=file] { font: inherit; max-width: 100%; }
+  .story-panel pre { max-height: 260px; overflow: auto; }
+  .error-text { color: var(--failed); white-space: pre-wrap; }
+  .step { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-bg); border-radius: 99px; padding: 1px 9px; margin-left: 8px; vertical-align: 2px; }
+  .queue { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+  .qitem { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 99px; padding: 2px 4px 2px 4px; font-size: 12.5px; font-weight: 600; background: var(--raised); }
+  .qitem .qn { display: inline-grid; place-items: center; min-width: 18px; height: 18px; border-radius: 99px; background: var(--notrun-bg); color: var(--muted); font-size: 11px; font-weight: 700; }
+  .qx { border: 0; background: none; width: 20px; height: 20px; border-radius: 50%; color: var(--muted); font-size: 15px; line-height: 1; display: inline-grid; place-items: center; }
+  .qx:hover { background: var(--failed-bg); color: var(--failed); }
+  pre { background: var(--code); border-radius: var(--radius-sm); padding: 10px 12px; overflow: auto; margin: 6px 0; font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 320px; }
+
+  /* test table */
+  .table-card { padding: 0; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 700; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--raised); }
+  td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  tr.test { cursor: pointer; } tr.test:hover td { background: var(--raised); }
+  tr.test.open td { background: var(--raised); }
+  .case-id { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .reason { margin-top: 6px; padding: 6px 10px; background: var(--blocked-bg); border-radius: var(--radius-sm); font-size: 12.5px; }
+  .reason.na { background: var(--na-bg); }
+  .reason.run { background: var(--running-bg); }
+  tr.test.is-na td:not(.pick) { opacity: .7; }
+  td.pick, th.pick { width: 36px; padding-right: 0; }
+  td.pick input, th.pick input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+  .selbar { position: sticky; top: 76px; z-index: 4; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
+  .selbar input[type=text] { padding: 7px 11px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--panel); color: var(--ink); min-width: 260px; flex: 1; max-width: 420px; font: inherit; }
+  .errline { margin-top: 4px; color: var(--failed); font-size: 12.5px; }
+  .hintline { margin-top: 4px; color: var(--muted); font-size: 12.5px; }
+  .hintline strong { color: var(--ink); }
+  /* Your verdict: the list next to each case, the reason row it opens, and what it says once given */
+  td.verdict { width: 168px; }
+  .verdict-pick { width: 100%; padding: 5px 8px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .verdict-pick.set { border-color: var(--accent); background: var(--accent-bg); }
+  tr.correct td { background: var(--accent-bg); padding: 12px 16px 14px 48px; }
+  .correct-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .correct-form label { font-weight: 700; }
+  .correct-form .hintline { flex-basis: 100%; margin: 2px 0 0; }
+  .review { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .review-note { flex: 1; min-width: 240px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; }
+  .reviewline { margin-top: 4px; font-size: 12.5px; font-weight: 700; }
+  .reviewline { color: var(--accent); font-weight: 600; } .reviewline b { font-weight: 700; }
+  .reviewline.done { color: var(--passed); }
+  .detail td { background: var(--raised); padding: 4px 16px 18px 48px; }
+  .gherkin { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 10px; }
+  .gherkin .gk { color: var(--accent); display: inline-block; min-width: 48px; }
+  .gherkin .ar { color: var(--muted); margin-top: 6px; font-size: 13px; }
+  .prio { font-size: 10px; font-weight: 700; border-radius: 5px; padding: 1px 5px; background: var(--notrun-bg); color: var(--muted); vertical-align: middle; }
+  .prio.p1 { background: var(--failed-bg); color: var(--failed); }
+  .shots { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .shots img { max-width: 280px; max-height: 180px; border-radius: var(--radius-sm); border: 1px solid var(--line); cursor: zoom-in; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--notrun); display: inline-block; }
+  .dot.on { background: var(--passed); box-shadow: 0 0 0 3px var(--passed-bg); } .dot.off { background: var(--failed); }
+  .spin { width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } .bar > span, .btn, .page-card { transition: none; } }
+  .empty { padding: 28px; text-align: center; color: var(--muted); }
+
+  /* run log drawer */
+  #logbox { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); z-index: 6; }
+  #logbar { display: flex; justify-content: space-between; align-items: center; padding: 9px 22px; cursor: pointer; font-weight: 700; }
+  #logtext { display: none; margin: 0; border-radius: 0; height: 280px; max-height: 42vh; }
+  #logbox.open #logtext { display: block; }
+  .chg { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 700; border-radius: 5px; padding: 1px 6px; background: var(--notrun-bg); color: var(--muted); vertical-align: 1px; white-space: nowrap; }
+  .chg.bad { background: var(--failed-bg); color: var(--failed); }
+  .chg.good { background: var(--passed-bg); color: var(--passed); }
+  .eta { color: var(--ink); font-weight: 600; }
+  #toast { position: fixed; right: 22px; bottom: 58px; z-index: 30; max-width: min(420px, calc(100vw - 32px)); padding: 11px 16px; border-radius: var(--radius-sm); background: var(--ink); color: var(--panel); font-weight: 600; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .2s, transform .2s; }
+  #toast.show { opacity: 1; transform: none; }
+  #toast.error { background: var(--failed); color: var(--on-failed); }
+  @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+  #lightbox { position: fixed; inset: 0; background: rgba(5, 10, 20, .82); display: none; align-items: center; justify-content: center; z-index: 20; cursor: zoom-out; }
+  #lightbox img { max-width: 94vw; max-height: 92vh; border-radius: 8px; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; } nav { border-right: 0; border-bottom: 1px solid var(--line); position: static; height: auto; }
+    #toast { left: 16px; right: 16px; }
+    .page-head { grid-template-columns: 1fr; } .page-actions { justify-content: flex-start; }
+    .rate.right { text-align: left; align-items: flex-start; }
+    .totals { display: none; } main { padding: 18px 16px 28px; }
+    header { padding: 10px 16px; gap: 10px; } .brand .conn { display: none; } #reportLink { display: none !important; }
+  }
+  table.history td:first-child, table.history td:last-child { white-space: nowrap; }
+  table.history td:nth-child(3) { white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="crest" aria-hidden="true">H</span>
+    <div><h1>ECS test runs</h1><div class="conn"><span class="dot" id="conn"></span><span id="connText">connecting…</span><span id="account"></span></div></div></div>
+  <div class="totals" id="totals"></div>
+  <div class="hdr-actions">
+    <span id="team" class="team"></span>
+    <a class="btn small ghost" id="reportLink" href="/report/index.html" target="_blank" rel="noopener" style="display:none">Playwright report</a>
+    <button class="btn small" data-action="story-open" title="Add the Excel sheet of a new user story to the project">＋ Add user story</button>
+    <button class="btn small ghost" data-action="reload" title="Look for new or renamed tests">Reload tests</button>
+    <button class="btn small theme-btn" id="themeBtn" data-action="theme" title="Use the computer's theme, light or dark">◐ System</button>
+  </div>
+</header>
+<section id="storyPanel" class="banner run story-panel" hidden aria-label="Add a user story">
+  <div class="row between"><strong>Add a user story</strong><button class="btn small ghost" data-action="story-close">Close</button></div>
+  <p class="small muted" style="margin:4px 0 10px">Choose the Excel file of the story's test cases. It is saved in the project (docs/test-cases) and its tests are started: the story then shows on the dashboard, with its cases "not built yet" until Claude builds them. Share it with <strong>Share my work</strong>.</p>
+  <div class="row">
+    <input type="file" id="storyFile" accept=".xlsx">
+    <input type="text" class="review-note" id="storyId" maxlength="20" placeholder="Story id, if the name has none (PTL-94)" style="max-width:340px">
+    <button class="btn primary small" data-action="story-add" id="storyAdd">Add</button>
+  </div>
+  <div id="storyResult"></div>
+</section>
+<div class="layout">
+  <nav id="nav"></nav>
+  <main id="main"></main>
+</div>
+<div id="logbox">
+  <div id="logbar" data-action="toggle-log"><span>Run log</span><span class="small muted" id="logHint">Show</span></div>
+  <pre id="logtext"></pre>
+</div>
+<div id="lightbox"><img alt="screenshot"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const state = { restartNeeded: null, restarting: false, askLatest: null, sharing: false, shareMessage: '', authorName: '', authorEmail: '', teamSeenAt: null, teamDismissedAt: 0, priorities: [], picked: [], correcting: null, correctionNote: '', snap: null, view: 'overview', filter: null, search: '', open: new Set(), selected: new Set(), naReason: '', notes: {}, headless: true, logOpen: false, connected: false };
+try { state.headless = localStorage.getItem('headless') !== 'false'; state.view = localStorage.getItem('view') || 'overview'; state.guideLanguage = localStorage.getItem('guideLanguage') || 'ar'; state.priorities = JSON.parse(localStorage.getItem('priorities') || '[]').filter((p) => Number.isInteger(p) && p > 0); } catch { /* storage may be blocked */ }
+
+const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LABEL = { passed: 'Passed', failed: 'Failed', blocked: 'Blocked', running: 'Running', notrun: 'Not run', notapplicable: 'Not applicable' };
+const key = (status) => (status === 'notrun' ? 'notRun' : status === 'notapplicable' ? 'notApplicable' : status);
+/** Test cases a run would execute: everything except the ones marked not applicable. */
+const runnable = (summary) => summary.total - (summary.notApplicable ?? 0);
+
+/* Priority: the sheet gives each case a priority (1 for P1). The priorities chosen run and show; none chosen means all. */
+const prioOf = (t) => (t.scenario && t.scenario.priority) || undefined;
+const inPriorities = (t) => !state.priorities.length || state.priorities.includes(prioOf(t));
+/** "P1", "P1 and P2", "P1, P2 and P3". */
+const priorityName = (list) => { const names = [...list].sort((a, b) => a - b).map((p) => `P${p}`); return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || ''; };
+/** The cases of a page a run of the chosen priorities would run (never the ones marked not applicable). */
+const casesToRun = (page) => page.tests.filter((t) => t.status !== 'notapplicable' && inPriorities(t));
+/** "31 cases", or "12 P1 cases" when priorities are chosen. */
+const casesText = (n) => `${n} ${state.priorities.length ? `${priorityName(state.priorities)} ` : ''}case${n === 1 ? '' : 's'}`;
+function setPriorities(list) {
+  state.priorities = [...new Set(list)].sort((a, b) => a - b);
+  try { localStorage.setItem('priorities', JSON.stringify(state.priorities)); } catch { /* storage may be blocked */ }
+}
+/** The priority choice: All, then P1, P2, P3... with how many cases each would run. Several can be chosen together. */
+function priorityPicker(tests, compact = false) {
+  const present = [...new Set([...tests.map(prioOf).filter(Boolean), ...state.priorities])].sort((a, b) => a - b);
+  if (!present.length) return '';
+  const n = (p) => tests.filter((t) => t.status !== 'notapplicable' && prioOf(t) === p).length;
+  const chip = (p) => { const on = state.priorities.includes(p); return `<button class="${on ? 'active' : ''}" data-action="priority" data-p="${p}" aria-pressed="${on}" title="${on ? `Stop limiting to P${p}` : `Run and show the P${p} cases - choose more than one to combine them`}">P${p} <span class="n">${n(p)}</span></button>`; };
+  return `<div class="segments prio-pick ${compact ? 'compact' : ''}" role="group" aria-label="Priority"><button class="${state.priorities.length ? '' : 'active'}" data-action="priority" data-p="" aria-pressed="${!state.priorities.length}" title="Every priority">${compact ? 'All' : 'All priorities'}</button>${present.map(chip).join('')}</div>`;
+}
+
+const ago = (time) => {
+  if (!time) return 'never run';
+  const s = Math.max(0, Math.round((Date.now() - time) / 1000));
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return new Date(time).toLocaleDateString();
+};
+const dur = (ms) => (ms >= 60000 ? `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s` : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
+/** A mark before the word, so a status is never told by its colour alone. */
+const MARK = { passed: '✓', failed: '✕', blocked: '!' };
+const pill = (status, text) => `<span class="pill ${status}">${status === 'running' ? '<span class="spin"></span>' : MARK[status] ? `<span aria-hidden="true">${MARK[status]}</span>` : ''}${esc(text ?? LABEL[status])}</span>`;
+const count = (summary, status) => summary[key(status)] ?? 0;
+
+const barHtml = (summary) => {
+  const total = summary.total || 1;
+  return `<div class="bar" role="img" aria-label="${count(summary, 'passed')} passed, ${count(summary, 'failed')} failed">${['passed', 'failed', 'blocked', 'running', 'notapplicable'].map((s) => count(summary, s) ? `<span class="${s}" style="width:${(count(summary, s) / total) * 100}%"></span>` : '').join('')}</div>`;
+};
+const countsHtml = (summary) =>
+  ['passed', 'failed', 'blocked', 'running', 'notrun', 'notapplicable'].filter((s) => count(summary, s) > 0).map((s) => pill(s, `${count(summary, s)} ${LABEL[s].toLowerCase()}`)).join(' ') || '<span class="muted small">no test cases found</span>';
+
+/** Cases that ran and gave a result: passed, failed or could not be completed. Not run and not applicable are left out. */
+const ranCount = (summary) => count(summary, 'passed') + count(summary, 'failed') + count(summary, 'blocked');
+/** The pass rate of a page: how many of the cases that ran passed, as a percentage. */
+const rateHtml = (summary, align = '') => {
+  const ran = ranCount(summary);
+  const pct = ran ? Math.round((count(summary, 'passed') / ran) * 100) : null;
+  return `<div class="rate ${align}"><div class="pct">${pct === null ? '–' : `${pct}<small>%</small>`}</div>
+    <div class="of">${ran ? `<b>${count(summary, 'passed')}</b> of <b>${ran}</b> cases passed` : 'Not run yet'}</div></div>`;
+};
+/** One line with the counts that matter: passed, failed, blocked, and what is left out. */
+const tallyHtml = (summary) => {
+  const part = (status, cls) => (count(summary, status) ? `<span class="${cls}"><b>${count(summary, status)}</b> ${LABEL[status].toLowerCase()}</span>` : '');
+  return `<div class="tally">${part('passed', 'ok')}${part('failed', 'ko')}${part('blocked', 'bl')}${part('notrun', '')}${part('notapplicable', '')}</div>`;
+};
+/** The switch that decides whether the browser is shown while the tests run. */
+const browserSwitch = () => `<label class="switch" title="Watch the browser while the tests run (slower)"><input type="checkbox" data-action="headless" ${state.headless ? '' : 'checked'}> Show browser</label>`;
+
+const busy = () => !!(state.snap && state.snap.run && !state.snap.run.finishedAt);
+
+/** A short message at the corner of the screen that goes away by itself. */
+function toast(message, kind = '') {
+  const box = $('toast');
+  box.textContent = message;
+  box.className = `show ${kind}`;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { box.className = kind; }, kind === 'error' ? 7000 : 4000);
+}
+
+/** Sends an action to the dashboard; a refusal is shown as a message. Returns the answer, or null when refused. */
+async function post(url, body) {
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }).catch(() => null);
+  const answer = response ? await response.json().catch(() => ({})) : {};
+  // A run asked for while the team shared newer tests: the person chooses first (teamBanner), then it is sent again
+  if (response && response.status === 409 && answer.needsLatest) {
+    return new Promise((resolve) => { state.askLatest = { url, body: body ?? {}, behind: answer.needsLatest, resolve }; renderMain(); window.scrollTo({ top: 0 }); });
+  }
+  if (!response || !response.ok) {
+    toast(answer.error || (response ? `Request failed (${response.status})` : 'The dashboard is not answering - is it still running?'), 'error');
+    return null;
+  }
+  return answer;
+}
+
+/**
+ * "Add user story": sends the chosen Excel file to the dashboard, which saves it in docs/test-cases and starts its tests
+ * (story:new). Shows what it printed - the case list - or why it was not added.
+ */
+async function addStory() {
+  const file = $('storyFile').files[0];
+  const result = $('storyResult');
+  if (!file) { toast('Choose the Excel file of the user story first', 'error'); return; }
+  const button = $('storyAdd');
+  button.disabled = true;
+  result.innerHTML = '<div class="hintline"><span class="spin"></span> Adding the story…</div>';
+  const response = await fetch('/api/story', { method: 'POST', headers: { 'X-File-Name': encodeURIComponent(file.name), 'X-Story-Id': encodeURIComponent($('storyId').value) }, body: file }).catch(() => null);
+  const answer = response ? await response.json().catch(() => ({})) : { error: 'The dashboard is not answering - is it still running?' };
+  button.disabled = false;
+  if (response && response.ok) {
+    result.innerHTML = `<p style="margin:10px 0 6px"><strong>✓ ${esc(answer.story)} was added.</strong> It is on the dashboard now; press <strong>Share my work</strong> to send it to the team.</p><pre>${esc(answer.output)}</pre>`;
+    $('storyFile').value = '';
+    $('storyId').value = '';
+    toast(`${answer.story} was added`);
+  } else {
+    result.innerHTML = `<pre class="error-text">${esc(answer.error || `Request failed (${response ? response.status : 'no answer'})`)}</pre>`;
+    if (answer.needsId) $('storyId').focus();
+  }
+}
+
+/** Says what happened to runs that were asked for: started now, or waiting in the queue. */
+function reportQueued(answer) {
+  if (!answer) return;
+  const queued = answer.queued || [];
+  if (queued.length) toast(queued.length === 1 ? `${queued[0].pageTitle} will run after the pages before it in the queue` : `${queued.length} pages added to the queue - each starts when the one before ends`);
+  else if (!answer.started) toast('Already in the queue');
+}
+const runPage = async (pageId, caseIds, priorities = []) => { askToNotify(); reportQueued(await post('/api/run', { pageId, caseIds: caseIds ?? [], priorities, headless: state.headless })); };
+
+/** What changed for a case since the run before its latest one: 'bad' (a new failure), 'good' (fixed), 'other', or null. */
+function changeOf(t) {
+  if (!t.previous || t.previous === t.status || !['passed', 'failed', 'blocked'].includes(t.status)) return null;
+  return t.status === 'passed' ? 'good' : t.status === 'failed' && t.previous === 'passed' ? 'bad' : 'other';
+}
+function changeBadge(t) {
+  const change = changeOf(t);
+  if (!change) return '';
+  const was = `It was ${LABEL[t.previous].toLowerCase()} in the run before`;
+  return change === 'good' ? `<span class="chg good" title="${was}">Fixed</span>` : change === 'bad' ? `<span class="chg bad" title="${was}">New failure</span>` : `<span class="chg" title="${was}">was ${esc(LABEL[t.previous].toLowerCase())}</span>`;
+}
+
+/**
+ * How long a run of a page (or some of its cases) can be expected to take, from what it took before: the last full run of
+ * the page, or else the cases' own last durations (a page runs its cases two or three at a time). null when never run.
+ */
+function expectedMs(pageId, caseIds) {
+  const snap = state.snap;
+  const page = snap.pages.find((p) => p.id === pageId);
+  if (!page) return null;
+  if (!caseIds.length) {
+    const last = snap.history.find((entry) => entry.pageId === pageId && !entry.caseIds.length && !entry.crashed && !entry.stopped && entry.finishedAt);
+    if (last) return last.finishedAt - last.startedAt;
+  }
+  const tests = page.tests.filter((t) => t.status !== 'notapplicable' && (!caseIds.length || caseIds.includes(t.caseId)));
+  const timed = tests.filter((t) => t.durationMs > 0);
+  if (!timed.length) return null;
+  const average = timed.reduce((sum, t) => sum + t.durationMs, 0) / timed.length;
+  return (average * tests.length) / (tests.length > 2 ? 2 : 1);
+}
+const roughly = (ms) => (ms < 90000 ? 'about a minute' : `about ${Math.round(ms / 60000)} min`);
+
+/** The time left for the run in progress and for the whole queue, in words; '' when there is nothing to go on. */
+function etaText(snap) {
+  const run = snap.run;
+  const elapsed = Date.now() - run.startedAt;
+  const expected = run.done > 0 ? (elapsed / run.done) * run.total : expectedMs(run.pageId, run.caseIds);
+  if (expected === null) return '';
+  const left = Math.max(0, expected - elapsed);
+  const queued = (snap.queue || []).map((q) => expectedMs(q.pageId, q.caseIds));
+  const parts = [`${roughly(left)} left`];
+  if (queued.length) {
+    const known = queued.filter((ms) => ms !== null);
+    const end = new Date(Date.now() + left + known.reduce((sum, ms) => sum + ms, 0));
+    parts.push(`the queue ends ${known.length < queued.length ? 'after' : 'around'} ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+  }
+  return parts.join(' · ');
+}
+
+/** A run button: runs now, or - while a run is in progress - adds to the queue. */
+const runLabel = (text) => (busy() ? `＋ Queue ${text}` : `▶ Run ${text}`);
+const runTitle = () => (busy() ? 'A run is in progress: this one starts when it and the others in the queue have ended' : '');
+/** The Run button of a whole page: says so when the page is running or waiting already. */
+const pageRunLabel = (pageId, text) => {
+  const where = runOrderOf(pageId);
+  return where === 'running' ? 'Running…' : where ? 'In the queue' : runLabel(text);
+};
+/** Where a page is in the run order: 'running', its place in the queue (1 = next), or null. */
+function runOrderOf(pageId) {
+  const snap = state.snap;
+  if (busy() && snap.run.pageId === pageId) return 'running';
+  const index = (snap.queue || []).findIndex((q) => q.pageId === pageId);
+  return index < 0 ? null : index + 1;
+}
+
+/* ---------- rendering ---------- */
+function renderHeader() {
+  const snap = state.snap;
+  $('totals').innerHTML = snap ? countsHtml(snap.totals) : '';
+  $('reportLink').style.display = snap && snap.htmlReport ? '' : 'none';
+  $('conn').className = `dot ${state.connected ? 'on' : 'off'}`;
+  $('connText').textContent = state.connected ? 'Connected' : 'Reconnecting…';
+  $('team').innerHTML = teamChip(snap);
+  noticeTeamResult(snap);
+  // Whose back-office account the runs use: each person has their own in .env, so nobody signs anyone else out
+  const account = $('account');
+  account.textContent = !snap ? '' : snap.account ? `· Back office as ${snap.account}` : '· No back-office account in .env';
+  account.title = snap && snap.account ? 'Your own account, from .env - each person uses their own so runs never sign each other out' : 'Put your own back-office user name and password in .env (CMS_CONTENT_USERNAME and CMS_CONTENT_PASSWORD)';
+}
+
+function renderNav() {
+  const snap = state.snap;
+  if (!snap) { $('nav').innerHTML = ''; return; }
+  // Pages that were ticked but are gone (renamed, removed) are dropped
+  state.picked = state.picked.filter((id) => snap.pages.some((p) => p.id === id));
+  const groups = new Map();
+  for (const page of snap.pages) { if (!groups.has(page.group)) groups.set(page.group, []); groups.get(page.group).push(page); }
+  let html = `<button class="nav-item ${state.view === 'overview' ? 'active' : ''}" data-action="view" data-id="overview"><span class="t">All pages</span><span class="s">Every page and the latest runs</span></button>`;
+  const g = snap.guide || {};
+  html += `<button class="nav-item ${state.view === 'guide' ? 'active' : ''}" data-action="view" data-id="guide">
+    <span class="t"><span>User guide</span>${g.running ? '<span class="spin" style="color:var(--running)"></span>' : ''}</span>
+    <span class="s">${g.running ? 'Being created…' : g.latest ? `Last made ${esc(ago(g.latest.createdAt))}` : 'A Word guide to the back office'}</span></button>`;
+  for (const [group, pages] of groups) {
+    const choosable = pages.filter((p) => runnable(p.summary) > 0);
+    const allPicked = choosable.length > 0 && choosable.every((p) => state.picked.includes(p.id));
+    html += `<h2><span>${esc(group)}</span>${choosable.length > 1 ? `<button class="linkbtn" data-action="pick-group" data-group="${esc(group)}">${allPicked ? 'Clear' : 'Select all'}</button>` : ''}</h2>`;
+    for (const page of pages) {
+      const s = page.summary;
+      const order = state.picked.indexOf(page.id) + 1;
+      const where = runOrderOf(page.id);
+      const status = where === 'running' ? '<span class="spin" style="color:var(--running)" title="Running now"></span>' : where ? `<span class="qtag" title="Runs after the ones before it in the queue">Queued ${where}</span>` : '';
+      html += `<div class="nav-row ${order ? 'picked' : ''}">
+        <label class="nav-pick" title="${runnable(s) ? 'Tick pages to run them one after another' : 'No test case to run'}"><input type="checkbox" data-action="pick-page" data-id="${esc(page.id)}" ${order ? 'checked' : ''} ${runnable(s) ? '' : 'disabled'} aria-label="Run ${esc(page.title)} with other pages"></label>
+        <button class="nav-item ${state.view === page.id ? 'active' : ''}" data-action="view" data-id="${esc(page.id)}">
+        <span class="t"><span>${order ? `<span class="order" title="Runs ${ordinal(order)}">${order}</span>` : ''}${esc(page.title)}</span>${status}</span>
+        <span class="s"><span class="ok"><b>${count(s, 'passed')}</b> passed</span><span class="ko"><b>${count(s, 'failed')}</b> failed</span>${count(s, 'blocked') ? `<span class="bl"><b>${count(s, 'blocked')}</b> blocked</span>` : ''}<span>${runnable(s)} to run</span></span></button></div>`;
+    }
+  }
+  const scroll = $('nav').querySelector('.nav-scroll')?.scrollTop ?? 0;
+  $('nav').innerHTML = `<div class="nav-scroll">${html}</div>${pickedFoot(snap)}`;
+  $('nav').querySelector('.nav-scroll').scrollTop = scroll;
+}
+
+const ordinal = (n) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
+
+/** The foot of the side bar: runs the ticked pages one after another, in the order they were ticked. */
+function pickedFoot(snap) {
+  if (!state.picked.length) {
+    return '<div class="nav-run"><span class="muted small">Tick pages to run them one after another.</span></div>';
+  }
+  const pages = state.picked.map((id) => snap.pages.find((p) => p.id === id)).filter(Boolean);
+  const cases = pages.reduce((sum, p) => sum + casesToRun(p).length, 0);
+  const n = pages.length;
+  return `<div class="nav-run"><div><strong>${n} page${n === 1 ? '' : 's'}</strong> <span class="muted small">· ${casesText(cases)}, in the order ticked</span></div>
+    ${priorityPicker(pages.flatMap((p) => p.tests), true)}
+    <div class="row"><button class="btn primary small" data-action="run-picked" ${cases ? '' : 'disabled'} title="${busy() ? 'They start when the run in progress (and the queue) has ended' : 'Each page starts when the one before it has ended'}">${busy() ? '＋ Add to queue' : `▶ Run ${n === 1 ? 'page' : 'in order'}`}</button>
+    <button class="btn ghost small" data-action="clear-picked">Clear</button></div></div>`;
+}
+
+function runBanner(snap) {
+  const run = snap.run;
+  if (!run || run.finishedAt) return '';
+  const percent = run.total ? Math.min(100, Math.round((run.done / run.total) * 100)) : 0;
+  const batch = snap.batch || { position: 1, total: 1 };
+  const queue = snap.queue || [];
+  const next = queue.length ? `<div class="queue"><span class="muted small">Up next</span>${queue.map((q, i) => `<span class="qitem"><span class="qn">${batch.position + i + 1}</span>${esc(q.pageTitle)}${q.caseIds.length ? ` <span class="muted">· ${q.scope ? esc(`${q.caseIds.length} ${q.scope}`) : `${q.caseIds.length} case${q.caseIds.length === 1 ? '' : 's'}`}</span>` : ''}<button class="qx" data-action="unqueue" data-index="${i}" title="Take it out of the queue" aria-label="Take ${esc(q.pageTitle)} out of the queue">×</button></span>`).join('')}</div>` : '';
+  const buttons = queue.length
+    ? `<button class="btn small" data-action="skip" title="End this page (its running test finishes first) and go on with the next">${run.stopping ? 'Skip now' : 'Skip to next'}</button><button class="btn danger small" data-action="stop" title="End this page and empty the queue">Stop all</button>`
+    : `<button class="btn danger small" data-action="stop">${run.stopping ? 'Stop now' : 'Stop'}</button>`;
+  const stoppingNote = run.stopping
+    ? `<div class="muted small" style="margin-top:6px">${queue.length ? 'Ending this page: the test running now finishes (its clean-up runs), the rest of the page is skipped, then the next page starts.' : 'Stopping: the test running now is finishing (its clean-up runs) and the others are skipped. Everything tested so far is kept in the results, the logs and the bug report. Press Stop now to end it at once - that loses the report.'}</div>`
+    : '';
+  return `<div class="banner run"><div class="row between"><div><strong><span class="spin"></span> ${run.stopping ? 'Stopping' : 'Running'} ${esc(run.pageTitle)}</strong>${batch.total > 1 ? `<span class="step">Page ${batch.position} of ${batch.total}</span>` : ''}
+      <div class="meta"><span>${run.scope ? esc(`${run.caseIds.length} ${run.scope}`) : run.caseIds.length ? esc(run.caseIds.length > 6 ? `${run.caseIds.length} selected cases` : run.caseIds.join(', ')) : 'All test cases'}</span><span>${run.done} of ${run.total} finished (${percent}%)</span>${etaText(snap) ? `<span class="eta">${esc(etaText(snap))}</span>` : ''}${run.headless ? '' : '<span>Browser shown</span>'}</div></div>
+      <div class="row">${buttons}</div></div>
+      ${stoppingNote}
+      <div class="bar" style="margin-top:8px"><span class="running" style="width:${percent}%"></span></div>${next}</div>`;
+}
+
+/** Runs that were waiting when the dashboard was closed: they start again only when asked. */
+function pausedBanner(snap) {
+  const paused = snap.pausedQueue || [];
+  if (!paused.length || busy()) return '';
+  return `<div class="banner"><div class="row between"><div><strong>${paused.length} run${paused.length === 1 ? ' was' : 's were'} waiting when the dashboard was closed</strong>
+    <div class="meta">${paused.map((q, i) => `<span>${i + 1}. ${esc(q.pageTitle)}${q.caseIds.length ? ` (${q.scope ? esc(`${q.caseIds.length} ${q.scope}`) : `${q.caseIds.length} case${q.caseIds.length === 1 ? '' : 's'}`})` : ''}</span>`).join('')}</div></div>
+    <div class="row"><button class="btn primary small" data-action="resume-queue">▶ Run them</button><button class="btn ghost small" data-action="discard-queue">Forget them</button></div></div></div>`;
+}
+
+function crashBanner(snap, page) {
+  const last = snap.history.find((entry) => !page || entry.project === page.project);
+  if (!last || !last.crashed) return '';
+  return `<div class="banner error"><strong>Playwright could not run ${esc(last.pageTitle)}</strong><pre>${esc(last.crashed)}</pre>
+    <span class="small muted">Typical causes: a missing value in .env (the message names it), the VPN is off, or Chrome is not installed.</span></div>`;
+}
+
+/** Download of the Word bug report of the page's last run (it is replaced by the next run). */
+function bugReportLink(snap, page) {
+  const report = snap.bugReports && snap.bugReports[page.id];
+  if (!report) {
+    return '';
+  }
+  return `<a class="btn" href="/bug-report/${encodeURIComponent(page.id)}" download="${esc(report.name)}" title="${esc(report.name)}, written ${esc(ago(report.at))}">⬇ Bug report</a>`;
+}
+
+/** How many cases of a page failed in its last run after passing in the run before, and how many were fixed. */
+/** A new story shared before its cases were written: how many wait to be built (by a teammate who works with Claude). */
+function notBuiltLine(page) {
+  const n = (state.snap.notBuilt || {})[page.id] || 0;
+  return n ? `<div class="reason" title="Shared with its tests started (npm run story:new) - the cases are written by someone who works with Claude">${n} case${n === 1 ? '' : 's'} not built yet - ask Claude to build ${n === 1 ? 'it' : 'them'}</div>` : '';
+}
+
+function newFailuresLine(page) {
+  const bad = page.tests.filter((t) => changeOf(t) === 'bad').length;
+  const good = page.tests.filter((t) => changeOf(t) === 'good').length;
+  if (!bad && !good) return '';
+  return `<div class="small">${bad ? `<span class="chg bad" style="margin-left:0">${bad} new failure${bad === 1 ? '' : 's'}</span>` : ''}${good ? `<span class="chg good"${bad ? '' : ' style="margin-left:0"'}>${good} fixed</span>` : ''} <span class="muted">since the run before</span></div>`;
+}
+
+/** Running now, or its place in the queue. */
+function orderChip(pageId) {
+  const where = runOrderOf(pageId);
+  return where === 'running' ? pill('running', 'Running') : where ? `<span class="qtag">Queued ${where}</span>` : '';
+}
+
+function renderOverview() {
+  const snap = state.snap;
+  const cards = snap.pages.map((page) => `
+    <div class="card page-card" data-action="view" data-id="${esc(page.id)}">
+      <div class="head"><div><strong>${esc(page.title)}</strong><div class="meta"><span>${esc(page.group)}</span><span>Last run ${esc(ago(page.lastRunAt))}</span></div></div><div class="row" style="gap:6px">${orderChip(page.id)}<span class="story">${esc(page.story)}</span></div></div>
+      ${rateHtml(page.summary)}
+      ${barHtml(page.summary)}
+      ${tallyHtml(page.summary)}${newFailuresLine(page)}${notBuiltLine(page)}
+      <div class="row"><button class="btn primary small" data-action="run" data-id="${esc(page.id)}" data-prio="1" ${!casesToRun(page).length || runOrderOf(page.id) ? 'disabled' : ''} title="${runTitle()}">${pageRunLabel(page.id, casesText(casesToRun(page).length))}</button>
+      ${snap.bugReports && snap.bugReports[page.id] ? `<a class="btn small" href="/bug-report/${encodeURIComponent(page.id)}" download="${esc(snap.bugReports[page.id].name)}">⬇ Bug report</a>` : ''}</div>
+    </div>`).join('');
+  return `${pausedBanner(snap)}${runBanner(snap)}${crashBanner(snap)}<div class="row between" style="margin-bottom:16px"><h2 class="title">Pages</h2><div class="row">${priorityPicker(snap.pages.flatMap((p) => p.tests))}${browserSwitch()}</div></div>
+    <div class="grid">${cards || '<p class="muted">No pages found. Add a folder with tests under tests/pages and press Reload tests.</p>'}</div>${historyHtml(snap.history)}`;
+}
+
+function historyHtml(history) {
+  if (!history.length) return '';
+  const rows = history.slice(0, 10).map((entry) => `<tr><td>${esc(ago(entry.finishedAt || entry.startedAt))}</td><td>${esc(entry.pageTitle)}${entry.caseIds.length ? ` <span class="muted small">(${esc(entry.caseIds.slice(0, 4).join(', '))}${entry.caseIds.length > 4 ? ` and ${entry.caseIds.length - 4} more` : ''})</span>` : ''}</td>
+    <td>${entry.crashed ? pill('failed', 'Could not run') : entry.stopped ? pill('blocked', 'Stopped') : countsHtml(entry.summary)}</td><td>${entry.finishedAt ? dur(entry.finishedAt - entry.startedAt) : ''}</td></tr>`).join('');
+  return `<h3 class="section">Recent runs</h3><div class="card table-card"><table class="history"><tr><th>When</th><th>Page</th><th>Result</th><th>Took</th></tr>${rows}</table></div>`;
+}
+
+function scenarioHtml(scenario) {
+  const line = (word, text) => `<div><strong class="gk">${word}</strong> ${esc(text).split(' | ').join(' <strong class="gk">And</strong> ')}</div>`;
+  return `<div class="gherkin">${line('Given', scenario.given)}${line('When', scenario.when)}${line('Then', scenario.then)}
+    ${scenario.arabic ? `<div class="ar" dir="rtl">${esc(scenario.arabic)}</div>` : ''}</div>`;
+}
+
+function selectionBar(page) {
+  const chosen = page.tests.filter((t) => state.selected.has(t.key));
+  if (!chosen.length) return '';
+  const applicable = chosen.filter((t) => t.status !== 'notapplicable');
+  const skipped = chosen.filter((t) => t.status === 'notapplicable');
+  return `<div class="selbar"><strong>${chosen.length} selected</strong>
+    <input type="text" id="naReason" maxlength="500" placeholder="Why is it not applicable? (shown on the case)" value="${esc(state.naReason)}" ${applicable.length ? '' : 'disabled'}>
+    <button class="btn small" data-action="mark-na" data-id="${esc(page.id)}" ${applicable.length ? '' : 'disabled'} title="Skip these test cases until they are made applicable again">⊘ Mark ${applicable.length} not applicable</button>
+    <button class="btn small" data-action="restore-na" data-id="${esc(page.id)}" ${skipped.length ? '' : 'disabled'}>↺ Make ${skipped.length} applicable again</button>
+    <button class="btn small primary" data-action="run-selected" data-id="${esc(page.id)}" ${applicable.length ? '' : 'disabled'} title="${runTitle()}">${runLabel(`${applicable.length} selected`)}</button>
+    <button class="btn small" data-action="clear-selection">Clear</button></div>`;
+}
+
+/** Your verdict on a case (tests/pages/<page>/review.json): the result it should give and why, if you gave one. */
+const reviewOf = (page, t) => ((state.snap.reviews || {})[page.id] || {})[t.caseId];
+const VERDICTS = { passed: 'Should pass', failed: 'Should fail (a real bug)', blocked: 'Should be blocked', notapplicable: 'Not applicable' };
+const REASON_HINT = {
+  passed: 'What changed? e.g. the maximum is now 200, not 100',
+  failed: 'Why is it a real bug? e.g. confirmed with the developers',
+  blocked: 'What is missing? e.g. needs a test mailbox',
+  notapplicable: 'Why is it not applicable? e.g. the feature was removed',
+};
+
+/** What your verdict says on the case's row: waiting for Claude, or what Claude changed for it. */
+function reviewBadge(page, t) {
+  const review = reviewOf(page, t);
+  if (!review) return '';
+  const matches = review.expected === t.status;
+  return `<div class="reviewline ${review.done ? 'done' : ''}">${review.done
+    ? `✓ Done - your verdict "${esc(VERDICTS[review.expected].toLowerCase())}" was checked and the test updated${matches ? ', it now gives your result' : ''}: ${esc(review.done.note)}`
+    : `You said: <b>${esc(VERDICTS[review.expected].toLowerCase())}</b> - ${esc(review.note)} <span class="muted">· Claude updates the test before the next run</span>`}</div>`;
+}
+
+/** How many of your verdicts on a page Claude has not acted on yet. */
+function waitingVerdicts(page) {
+  const waiting = Object.values((state.snap.reviews || {})[page.id] || {}).filter((review) => !review.done).length;
+  return waiting ? `<span class="reviewline" style="margin:0">${waiting} verdict${waiting === 1 ? '' : 's'} waiting for Claude</span>` : '';
+}
+
+/** The "Your verdict" list of a case. */
+function verdictPicker(page, t) {
+  const review = reviewOf(page, t);
+  // A verdict Claude has acted on is settled: the list is empty again, ready for the next verdict
+  const current = t.status === 'notapplicable' ? 'notapplicable' : review && !review.done ? review.expected : '';
+  const editing = state.correcting && state.correcting.key === t.key ? state.correcting.expected : '';
+  const value = editing || current;
+  const option = (key) => `<option value="${key}" ${value === key ? 'selected' : ''}>${VERDICTS[key]}</option>`;
+  return `<select class="verdict-pick ${current ? 'set' : ''}" data-action="verdict" data-id="${esc(page.id)}" data-key="${esc(t.key)}" data-case="${esc(t.caseId)}" aria-label="Your verdict on ${esc(t.caseId)}" title="Tell Claude what this case should give, and why">
+    <option value="" ${value ? '' : 'selected'}>${current ? 'Clear my verdict' : 'Your verdict…'}</option>${['passed', 'failed', 'blocked', 'notapplicable'].map(option).join('')}</select>`;
+}
+
+/** The row under a case where the reason for a new verdict is written. */
+function correctionRow(page, t) {
+  if (!state.correcting || state.correcting.key !== t.key) return '';
+  const expected = state.correcting.expected;
+  return `<tr class="correct"><td colspan="6"><div class="correct-form">
+    <label for="correctNote">${esc(t.caseId)} - ${esc(VERDICTS[expected])}. Why?</label>
+    <input type="text" class="review-note" id="correctNote" maxlength="1000" placeholder="${esc(REASON_HINT[expected])}" value="${esc(state.correctionNote)}">
+    <button class="btn small primary" data-action="verdict-save" data-id="${esc(page.id)}" data-key="${esc(t.key)}">Save</button>
+    <button class="btn small ghost" data-action="verdict-cancel">Cancel</button>
+    <div class="hintline">${expected === 'notapplicable' ? 'The case is skipped from the next run on, with your reason.' : 'Claude reads this before the next run and changes the test so the case gives this result.'}</div></div></td></tr>`;
+}
+
+function renderPage(page) {
+  const snap = state.snap;
+  const s = page.summary;
+  const failedIds = page.tests.filter((t) => t.status === 'failed' && inPriorities(t)).map((t) => t.caseId);
+  const toRun = casesToRun(page).length;
+  const term = state.search.trim().toLowerCase();
+  const shown = page.tests.filter((t) => inPriorities(t) && (!state.filter || (state.filter === 'changed' ? changeOf(t) !== null : t.status === state.filter)) && (!term || `${t.caseId} ${t.title} ${t.reason ?? ''} ${t.error ?? ''}`.toLowerCase().includes(term)));
+  const allShownSelected = shown.length > 0 && shown.every((t) => state.selected.has(t.key));
+  const rows = shown.map((t) => {
+    const first = (t.error || '').split('\n').find((line) => line.trim()) || '';
+    const hint = (/^\s*Hint: (.+)$/m.exec(t.error || '') || [])[1] || '';
+    const na = t.status === 'notapplicable';
+    const detail = state.open.has(t.key) ? `<tr class="detail"><td colspan="6">
+        ${t.scenario ? scenarioHtml(t.scenario) : ''}
+        ${na ? `<div><strong>Not applicable:</strong> ${esc(t.reason)}</div>` : t.reason ? `<div><strong>Why it is blocked:</strong> ${esc(t.reason)}</div>` : ''}
+        ${t.error ? `<pre>${esc(t.error.slice(0, 4000))}</pre>` : ''}
+        ${t.screenshots.length ? `<div class="shots">${t.screenshots.map((p) => `<img loading="lazy" src="/api/file?path=${encodeURIComponent(p)}" data-action="zoom" alt="screenshot">`).join('')}</div>` : ''}
+        <div class="row small muted" style="margin-top:10px"><code>${esc(t.file)}:${t.line}</code>
+          ${na
+            ? `<button class="btn small" data-action="restore-one" data-id="${esc(page.id)}" data-case="${esc(t.caseId)}">↺ Make applicable again</button>`
+            : `<button class="btn small" data-action="run" data-id="${esc(page.id)}" data-case="${esc(t.caseId)}" title="${runTitle()}">${runLabel('only this case')}</button>
+               <button class="btn small" data-action="na-one" data-id="${esc(page.id)}" data-case="${esc(t.caseId)}" title="Select it and give the reason">⊘ Mark not applicable…</button>`}</div></td></tr>` : '';
+    return `<tr class="test ${na ? 'is-na' : ''} ${state.open.has(t.key) ? 'open' : ''}" data-action="toggle" data-key="${esc(t.key)}"><td class="pick"><input type="checkbox" data-action="select" data-key="${esc(t.key)}" ${state.selected.has(t.key) ? 'checked' : ''} aria-label="Select ${esc(t.caseId)}"></td>
+      <td style="width:150px">${pill(t.status)}${changeBadge(t)}</td><td style="width:120px"><span class="case-id">${esc(t.caseId)}</span>${t.scenario && t.scenario.priority ? ` <span class="prio p${t.scenario.priority}" title="Priority ${t.scenario.priority} in the sheet">P${t.scenario.priority}</span>` : ''}</td>
+      <td>${esc(t.title.replace(t.caseId, '').replace(/^\s*[-–:]\s*/, '') || t.title)}
+        ${t.status === 'blocked' ? `<div class="reason"><strong>Why:</strong> ${esc(t.reason)}</div>` : ''}
+        ${t.status === 'running' && t.reason ? `<div class="reason run">${esc(t.reason)}</div>` : ''}
+        ${na ? `<div class="reason na"><strong>Not applicable:</strong> ${esc(t.reason)}</div>` : ''}
+        ${t.status === 'failed' && first ? `<div class="errline">${esc(first.slice(0, 220))}</div>` : ''}
+        ${t.status === 'failed' && hint ? `<div class="hintline"><strong>Hint:</strong> ${esc(hint)}</div>` : ''}
+        ${reviewBadge(page, t)}</td>
+      <td class="verdict">${verdictPicker(page, t)}</td>
+      <td class="muted small" style="width:70px;text-align:right">${t.durationMs && !na ? dur(t.durationMs) : ''}</td></tr>${correctionRow(page, t)}${detail}`;
+  }).join('');
+  const changed = page.tests.filter((t) => changeOf(t) !== null).length;
+  const segment = (status, label, colour) => `<button class="${(state.filter || '') === status ? 'active' : ''}" data-action="filter" data-status="${status}">${colour ? `<span class="dotk" style="background:var(--${colour})"></span>` : ''}${label} <span class="n">${status === 'changed' ? changed : status ? count(s, status) : page.tests.length}</span></button>`;
+  return `${pausedBanner(snap)}${runBanner(snap)}${crashBanner(snap, page)}
+    <div class="page-head">
+      <div><h2 class="title">${esc(page.title)} <span style="vertical-align:6px">${orderChip(page.id)}</span></h2>
+        <div class="meta"><span>${esc(page.group)}</span>${page.story ? `<span>Story ${esc(page.story)}</span>` : ''}${page.path ? `<span><code>${esc(page.path)}</code></span>` : ''}<span>Last run ${esc(ago(page.lastRunAt))}</span>${waitingVerdicts(page)}</div></div>
+      ${rateHtml(s, 'right')}
+      <div style="grid-column:1 / -1">${barHtml(s)}${notBuiltLine(page)}</div>
+    </div>
+    <div class="toolbar">
+      <div class="segments" role="group" aria-label="Show">${segment('', 'All')}${segment('failed', 'Failed', 'failed')}${segment('blocked', 'Blocked', 'blocked-mark')}${segment('passed', 'Passed', 'passed')}${segment('notrun', 'Not run', 'notrun')}${segment('notapplicable', 'Not applicable', 'na')}${changed ? segment('changed', 'Changed since last run', 'accent') : ''}</div>
+      ${priorityPicker(page.tests)}
+      <input type="search" id="search" placeholder="Search a case, title or error" value="${esc(state.search)}">
+      <div class="page-actions" style="margin-left:auto">${browserSwitch()}${bugReportLink(snap, page)}
+        <button class="btn" data-action="run" data-id="${esc(page.id)}" data-failed="1" ${!failedIds.length ? 'disabled' : ''} title="${runTitle()}">${busy() ? `＋ Queue ${failedIds.length} failed` : `↻ Re-run ${failedIds.length} failed`}</button>
+        <button class="btn primary" data-action="run" data-id="${esc(page.id)}" data-prio="1" ${!toRun || runOrderOf(page.id) ? 'disabled' : ''} title="${runTitle()}">${pageRunLabel(page.id, state.priorities.length ? casesText(toRun) : `all ${toRun}`)}</button></div>
+    </div>
+    ${selectionBar(page)}
+    <div class="card table-card"><table><tr><th class="pick"><input type="checkbox" data-action="select-all" ${allShownSelected ? 'checked' : ''} ${shown.length ? '' : 'disabled'} aria-label="Select all shown"></th><th>Status</th><th>Case</th><th>Test case <span class="muted" style="font-weight:500">(${shown.length} of ${page.tests.length}${state.priorities.length ? `, ${priorityName(state.priorities)} only` : ''}; tick cases to run them or mark them not applicable)</span></th><th>Your verdict</th><th></th></tr>${rows || `<tr><td colspan="6" class="empty">No test case matches${state.search ? ` "${esc(state.search)}"` : ''}.</td></tr>`}</table></div>
+    ${historyHtml(snap.history.filter((entry) => entry.project === page.project))}`;
+}
+
+/** The user guide: made from the live back office with the CMS account (read-only), downloaded as a Word file. */
+function renderGuide(snap) {
+  const g = snap.guide || {};
+  const latest = g.latest;
+  const status = g.running
+    ? `<div class="banner run"><div class="row between"><div><strong><span class="spin"></span> Creating the ${g.language === 'en' ? 'English' : 'Arabic'} user guide</strong>
+        <div class="meta"><span>${esc(g.progress || 'starting')}</span><span>started ${esc(ago(g.startedAt))}</span></div></div>
+        <button class="btn danger small" data-action="guide-stop">Stop</button></div></div>`
+    : g.error ? `<div class="banner error"><strong>The guide could not be created</strong><pre>${esc(g.error)}</pre>
+        <span class="small muted">Typical causes: the VPN is off, or the CMS account in .env cannot sign in.</span></div>` : '';
+  return `<div class="guide-head"><h2 class="title">User guide</h2>
+      <p class="muted">A step-by-step Word guide to the whole content tree of the back office: signing in, the home page, then one chapter per section in the tree's order - its fields, and for a list: opening it, adding an item, editing an item, the other actions on an item and the order of the items - and saving and publishing.
+      Every step is numbered on a screenshot. It is made from the live back office with the CMS account and only looks - nothing is saved, published or deleted. It takes a few minutes.</p></div>
+    ${status}
+    <div class="card"><div class="row" style="gap:12px;flex-wrap:wrap;align-items:center">
+      <label class="choice"><input type="radio" name="guideLanguage" value="ar" ${state.guideLanguage !== 'en' ? 'checked' : ''} data-action="guide-language"> Arabic (right to left)</label>
+      <label class="choice"><input type="radio" name="guideLanguage" value="en" ${state.guideLanguage === 'en' ? 'checked' : ''} data-action="guide-language"> English</label>
+      ${browserSwitch()}
+      <button class="btn primary" data-action="guide-create" ${g.running || busy() ? 'disabled' : ''} title="${busy() ? 'Wait for the test run to finish: both use the same back-office account' : ''}">Create user guide</button>
+      ${latest ? `<a class="btn" href="/api/guide/file" download="${esc(latest.name)}">⬇ Download ${esc(latest.language === 'en' ? 'English' : 'Arabic')} guide</a>` : ''}
+    </div>
+    ${latest ? `<div class="small muted" style="margin-top:10px">${esc(latest.name)} - ${latest.chapters} chapters, ${latest.figures} screenshots, made ${esc(ago(latest.createdAt))}</div>` : '<div class="small muted" style="margin-top:10px">No guide yet.</div>'}
+    ${busy() ? '<div class="small muted" style="margin-top:6px">A test run is in progress: the guide can be created when it has finished.</div>' : ''}</div>`;
+}
+
+/* ---------- team: the shared copy of the project on GitHub ---------- */
+const teamOf = (snap) => (snap && snap.team && snap.team.connected ? snap.team : null);
+const toShare = (t) => t.changes.length || t.ahead;
+/** The header: where this copy stands against the team's - Get latest, Share my work, or up to date. */
+function teamChip(snap) {
+  const t = teamOf(snap);
+  if (!t) return '';
+  if (t.busy) return `<span><span class="spin"></span> ${esc(t.busy === 'share' ? 'Sharing…' : 'Getting the latest…')}</span>`;
+  const latest = t.behind ? `<button class="btn small" data-action="team-latest" title="Take the tests and changes your teammates shared">↓ Get latest (${t.behind})</button>` : '';
+  const share = toShare(t) ? `<button class="btn small" data-action="team-share-open" title="Send your changes to GitHub for the whole team">↑ Share my work (${t.changes.length || t.ahead})</button>` : '';
+  return latest || share ? `${latest}${share}` : `<span class="ok" title="${esc(t.problem || `Checked with GitHub ${ago(t.checkedAt)}`)}">${t.problem ? '⚠ Not checked with GitHub' : '✓ Up to date with the team'}</span>`;
+}
+/** Says once how a share or an update ended. */
+function noticeTeamResult(snap) {
+  const t = teamOf(snap);
+  const last = t && t.last;
+  if (state.teamSeenAt === null) { state.teamSeenAt = Math.max(last ? last.at : 0, t && t.error ? t.error.at : 0); return; }
+  if (!last || last.at <= state.teamSeenAt) return;
+  state.teamSeenAt = last.at;
+  if (last.kind === 'share') { state.sharing = false; state.shareMessage = ''; toast(`Shared ${last.files.length} changed file${last.files.length === 1 ? '' : 's'} - your teammates get them with Get latest`); return; }
+  if (snap.launcher && (last.packagesChanged || last.dashboardChanged)) state.restartNeeded = { install: Boolean(last.packagesChanged) };
+  const restart = snap.launcher && state.restartNeeded ? ' Restart the dashboard to use them (button at the top).' : last.packagesChanged ? ' Run npm install, then restart the dashboard.' : last.dashboardChanged ? ' Restart the dashboard to use its new version.' : '';
+  toast(`${last.files.length ? `Updated: ${last.files.length} file${last.files.length === 1 ? '' : 's'} from your teammates.` : 'Already up to date.'}${restart}`);
+}
+const fileList = (files) => (files.length ? `<ul class="files">${files.slice(0, 16).map((f) => `<li><code>${esc(f)}</code></li>`).join('')}${files.length > 16 ? `<li class="muted">and ${files.length - 16} more</li>` : ''}</ul>` : '');
+/** Above every view: a share or an update going on, why the last one stopped, or the Share my work panel. */
+function teamBanner(snap) {
+  const t = teamOf(snap);
+  if (!t) return '';
+  if (state.restartNeeded && !t.busy) {
+    return `<div class="banner warn"><strong>Your teammates updated the dashboard${state.restartNeeded.install ? ' and its packages' : ''}</strong>
+      <p class="small muted" style="margin:4px 0 10px">Restart it to use the new version${state.restartNeeded.install ? ' (the packages are installed first, about a minute)' : ''}. The page comes back by itself.</p>
+      <div class="row"><button class="btn primary small" data-action="restart">↻ Restart the dashboard</button></div></div>`;
+  }
+  if (state.askLatest && !t.busy) {
+    const n = state.askLatest.behind;
+    return `<div class="banner warn"><strong>Your teammates shared ${n} new change${n === 1 ? '' : 's'}</strong>
+      <p class="small muted" style="margin:4px 0 10px">Get them before you run, so you test the latest cases. Your own unshared work stays as it is.</p>
+      <div class="row"><button class="btn primary small" data-action="ask-latest" data-choice="latest">↓ Get latest and run</button><button class="btn small" data-action="ask-latest" data-choice="skip">Run anyway</button><button class="btn ghost small" data-action="ask-latest" data-choice="cancel">Cancel</button></div></div>`;
+  }
+  if (t.busy) return `<div class="banner run"><strong><span class="spin"></span> ${t.busy === 'share' ? 'Sharing your work' : "Getting your teammates' changes"}</strong><div class="meta"><span>${esc(t.step || '')}</span></div></div>`;
+  if (t.error && t.error.at > state.teamDismissedAt) {
+    return `<div class="banner error"><div class="row between"><strong>${t.error.kind === 'share' ? 'Your work was not shared' : 'The latest was not taken'}</strong><button class="btn small ghost" data-action="team-dismiss">Close</button></div>
+      <pre>${esc(t.error.message.replace(/^NO_AUTHOR: /, ''))}</pre>${fileList(t.error.files)}</div>`;
+  }
+  if (!state.sharing) return '';
+  if (!t.author) {
+    return `<div class="banner"><strong>Before your first share: your name</strong><p class="small muted" style="margin:4px 0 10px">Your teammates see who shared what. It is saved for this project on this computer only.</p>
+      <div class="row"><input type="text" class="review-note" id="authorName" placeholder="Your name" value="${esc(state.authorName)}" style="max-width:220px">
+      <input type="email" class="review-note" id="authorEmail" placeholder="Your e-mail (the one of your GitHub account)" value="${esc(state.authorEmail)}" style="max-width:300px">
+      <button class="btn primary small" data-action="team-author">Save</button><button class="btn ghost small" data-action="team-share-cancel">Cancel</button></div></div>`;
+  }
+  const n = t.changes.length;
+  return `<div class="banner run"><strong>Share my work</strong> <span class="muted small">· ${n ? `${n} changed file${n === 1 ? '' : 's'}` : `${t.ahead} saved change${t.ahead === 1 ? '' : 's'} waiting to be sent`} · as ${esc(t.author)}</span>
+    ${fileList(t.changes)}
+    <div class="row" style="margin-top:10px"><input type="text" class="review-note" id="shareMessage" maxlength="120" placeholder="What did you change? For example: added the CMS-90 cases" value="${esc(state.shareMessage)}">
+      <button class="btn primary small" data-action="team-share">↑ Share</button><button class="btn ghost small" data-action="team-share-cancel">Cancel</button></div>
+    <div class="hintline">It is checked first (about a minute), combined with your teammates' latest work, then sent to GitHub. Your .env, your results and your verdicts are never sent.</div></div>`;
+}
+
+function renderMain() {
+  const snap = state.snap;
+  if (!snap) { $('main').innerHTML = '<p class="muted">Loading…</p>'; return; }
+  let html = '';
+  if (snap.loading && !snap.pages.some((p) => p.tests.length)) html += '<div class="banner run"><span class="spin"></span> Reading the test cases from Playwright…</div>';
+  if (snap.listError) html += `<div class="banner error"><strong>Playwright could not list the tests</strong><pre>${esc(snap.listError)}</pre></div>`;
+  const page = snap.pages.find((p) => p.id === state.view);
+  html += teamBanner(snap);
+  html += page ? renderPage(page) : state.view === 'guide' ? renderGuide(snap) : renderOverview();
+  const focused = document.activeElement && (['search', 'naReason', 'correctNote', 'shareMessage', 'authorName', 'authorEmail'].includes(document.activeElement.id) || document.activeElement.classList.contains('review-note')) ? document.activeElement.id : '';
+  const caret = focused ? document.activeElement.selectionStart : 0;
+  const scroll = window.scrollY;
+  $('main').innerHTML = html;
+  window.scrollTo(0, scroll);
+  if (focused && $(focused)) { const input = $(focused); input.focus(); input.setSelectionRange(caret, caret); }
+}
+
+function render() { renderHeader(); renderNav(); renderMain(); }
+
+/* ---------- events ---------- */
+/* ---------- theme ---------- */
+const THEMES = ['system', 'light', 'dark'];
+const THEME_LABEL = { system: '◐ System', light: '☀ Light', dark: '☾ Dark' };
+function currentTheme() { return document.documentElement.dataset.theme || 'system'; }
+function applyTheme(theme) {
+  if (theme === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme;
+  try { if (theme === 'system') localStorage.removeItem('theme'); else localStorage.setItem('theme', theme); } catch { /* ignore */ }
+  $('themeBtn').textContent = THEME_LABEL[theme];
+}
+applyTheme(currentTheme());
+
+document.addEventListener('click', (event) => {
+  if (event.target.closest('a[download]')) return; // a download link does what a link does; the card behind it must not open
+  const target = event.target.closest('[data-action]');
+  if (!target) return;
+  const action = target.dataset.action;
+  if (action === 'headless' || action === 'guide-language') return;
+  if (action === 'theme') { applyTheme(THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]); return; }
+  if (action === 'view') { state.view = target.dataset.id; state.filter = null; state.search = ''; state.selected.clear(); try { localStorage.setItem('view', state.view); } catch { /* ignore */ } render(); window.scrollTo(0, 0); }
+  else if (action === 'run') {
+    event.stopPropagation();
+    const page = state.snap.pages.find((p) => p.id === target.dataset.id);
+    let ids = target.dataset.case ? [target.dataset.case] : [];
+    if (target.dataset.failed && page) ids = page.tests.filter((t) => t.status === 'failed' && inPriorities(t)).map((t) => t.caseId);
+    void runPage(target.dataset.id, ids, target.dataset.prio ? state.priorities : []);
+  }
+  else if (action === 'select') {
+    event.stopPropagation();
+    target.checked ? state.selected.add(target.dataset.key) : state.selected.delete(target.dataset.key);
+    renderMain();
+  }
+  else if (action === 'select-all') {
+    event.stopPropagation();
+    const page = state.snap.pages.find((p) => p.id === state.view);
+    const term = state.search.trim().toLowerCase();
+    const shown = page ? page.tests.filter((t) => inPriorities(t) && (!state.filter || (state.filter === 'changed' ? changeOf(t) !== null : t.status === state.filter)) && (!term || `${t.caseId} ${t.title} ${t.reason ?? ''} ${t.error ?? ''}`.toLowerCase().includes(term))) : [];
+    for (const t of shown) target.checked ? state.selected.add(t.key) : state.selected.delete(t.key);
+    renderMain();
+  }
+  else if (action === 'clear-selection') { state.selected.clear(); renderMain(); }
+  else if (action === 'mark-na' || action === 'restore-na' || action === 'run-selected') {
+    event.stopPropagation();
+    const page = state.snap.pages.find((p) => p.id === target.dataset.id);
+    if (!page) return;
+    const chosen = page.tests.filter((t) => state.selected.has(t.key));
+    if (action === 'run-selected') { void runPage(page.id, chosen.filter((t) => t.status !== 'notapplicable').map((t) => t.caseId)); return; }
+    const marking = action === 'mark-na';
+    const ids = chosen.filter((t) => (t.status === 'notapplicable') !== marking).map((t) => t.caseId);
+    void post('/api/not-applicable', { pageId: page.id, caseIds: ids, reason: marking ? (state.naReason.trim() || 'Not applicable') : null }).then(() => { state.selected.clear(); state.naReason = ''; renderMain(); });
+  }
+  else if (action === 'na-one') {
+    event.stopPropagation();
+    const page = state.snap.pages.find((p) => p.id === target.dataset.id);
+    const test = page && page.tests.find((t) => t.caseId === target.dataset.case);
+    if (test) { state.selected.clear(); state.selected.add(test.key); renderMain(); const box = $('naReason'); if (box) box.focus(); }
+  }
+  else if (action === 'verdict') { event.stopPropagation(); return; }
+  else if (action === 'verdict-cancel') { state.correcting = null; state.correctionNote = ''; renderMain(); }
+  else if (action === 'verdict-save') {
+    event.stopPropagation();
+    const page = state.snap.pages.find((p) => p.id === target.dataset.id);
+    const test = page && page.tests.find((t) => t.key === target.dataset.key);
+    const note = (state.correctionNote || '').trim();
+    if (!test || !state.correcting) return;
+    if (!note) { toast('Write why - Claude updates the test from your reason', 'error'); const box = $('correctNote'); if (box) box.focus(); return; }
+    const done = () => { state.correcting = null; state.correctionNote = ''; renderMain(); };
+    if (state.correcting.expected === 'notapplicable') {
+      void post('/api/not-applicable', { pageId: page.id, caseIds: [test.caseId], reason: note }).then((answer) => {
+        if (!answer) return;
+        if (reviewOf(page, test)) void post('/api/review', { pageId: page.id, caseId: test.caseId, expected: null });
+        toast(`${test.caseId} is not applicable from now on`);
+        done();
+      });
+    } else {
+      const result = `${test.status}${test.reason || test.error ? `: ${test.reason || (test.error || '').split('\n').find((line) => line.trim())}` : ''}`;
+      void post('/api/review', { pageId: page.id, caseId: test.caseId, expected: state.correcting.expected, note, result }).then((answer) => {
+        if (!answer) return;
+        toast(`Saved - Claude will update ${test.caseId} before the next run`);
+        done();
+      });
+    }
+  }
+  else if (action === 'restore-one') {
+    event.stopPropagation();
+    void post('/api/not-applicable', { pageId: target.dataset.id, caseIds: [target.dataset.case], reason: null });
+  }
+  else if (action === 'stop') void post('/api/stop');
+  else if (action === 'skip') void post('/api/stop', { skip: true });
+  else if (action === 'resume-queue') { askToNotify(); void post('/api/queue/resume', { resume: true }).then(reportQueued); }
+  else if (action === 'discard-queue') void post('/api/queue/resume', { resume: false });
+  else if (action === 'unqueue') void post('/api/queue/remove', { index: Number(target.dataset.index) });
+  else if (action === 'pick-page') {
+    event.stopPropagation();
+    const id = target.dataset.id;
+    state.picked = target.checked ? [...state.picked.filter((p) => p !== id), id] : state.picked.filter((p) => p !== id);
+    renderNav();
+  }
+  else if (action === 'pick-group') {
+    const pages = state.snap.pages.filter((p) => p.group === target.dataset.group && runnable(p.summary) > 0).map((p) => p.id);
+    const all = pages.every((id) => state.picked.includes(id));
+    state.picked = all ? state.picked.filter((id) => !pages.includes(id)) : [...state.picked, ...pages.filter((id) => !state.picked.includes(id))];
+    renderNav();
+  }
+  else if (action === 'clear-picked') { state.picked = []; renderNav(); }
+  else if (action === 'run-picked') {
+    askToNotify();
+    const pageIds = [...state.picked];
+    void post('/api/queue', { pageIds, priorities: state.priorities, headless: state.headless }).then((answer) => {
+      if (!answer) return;
+      state.picked = [];
+      renderNav();
+      if (answer.started && answer.queued.length) toast(`Running ${answer.started.pageTitle} - ${answer.queued.length} more page${answer.queued.length === 1 ? '' : 's'} after it`);
+      else reportQueued(answer);
+      // Said last, so it is the message that stays: a ticked page with no case of the chosen priorities did not run
+      if (answer.leftOut && answer.leftOut.length) toast(`Left out - no ${priorityName(state.priorities)} case to run: ${answer.leftOut.join(', ')}`);
+    });
+  }
+  else if (action === 'guide-create') void post('/api/guide', { language: state.guideLanguage === 'en' ? 'en' : 'ar', headless: state.headless });
+  else if (action === 'guide-stop') void post('/api/guide/stop');
+  else if (action === 'reload') void post('/api/reload');
+  else if (action === 'team-latest') { if (busy()) { toast('A run is going on - get the latest when it has finished', 'error'); return; } void post('/api/team/latest'); }
+  else if (action === 'team-share-open') { state.sharing = true; renderMain(); window.scrollTo(0, 0); $('shareMessage')?.focus(); }
+  else if (action === 'team-share-cancel') { state.sharing = false; renderMain(); }
+  else if (action === 'ask-latest') {
+    const ask = state.askLatest;
+    state.askLatest = null;
+    renderMain();
+    if (!ask) return;
+    if (target.dataset.choice === 'cancel') ask.resolve(null);
+    else void post(ask.url, { ...ask.body, team: target.dataset.choice }).then(ask.resolve);
+  }
+  else if (action === 'story-open') { $('storyPanel').hidden = false; $('storyFile').focus(); }
+  else if (action === 'story-close') { $('storyPanel').hidden = true; $('storyResult').innerHTML = ''; }
+  else if (action === 'story-add') void addStory();
+  else if (action === 'restart') {
+    void post('/api/restart', { install: Boolean(state.restartNeeded && state.restartNeeded.install) }).then((answer) => {
+      if (!answer) return;
+      state.restarting = true;
+      state.restartNeeded = null;
+      renderMain();
+      toast('Restarting the dashboard - the page comes back by itself');
+    });
+  }
+  else if (action === 'team-dismiss') { state.teamDismissedAt = Date.now(); renderMain(); }
+  else if (action === 'team-author') {
+    void post('/api/team/author', { name: state.authorName, email: state.authorEmail }).then((answer) => { if (answer) { toast('Saved'); renderMain(); } });
+  }
+  else if (action === 'team-share') {
+    if (busy()) { toast('A run is going on - share when it has finished', 'error'); return; }
+    void post('/api/team/share', { message: state.shareMessage }).then((answer) => { if (answer) { state.teamDismissedAt = 0; renderMain(); } });
+  }
+  else if (action === 'priority') {
+    event.stopPropagation();
+    const p = Number(target.dataset.p);
+    setPriorities(!p ? [] : state.priorities.includes(p) ? state.priorities.filter((x) => x !== p) : [...state.priorities, p]);
+    render();
+  }
+  else if (action === 'filter') { const status = target.dataset.status || null; state.filter = state.filter === status ? null : status; render(); }
+  else if (action === 'toggle') { const k = target.dataset.key; state.open.has(k) ? state.open.delete(k) : state.open.add(k); renderMain(); }
+  else if (action === 'zoom') { event.stopPropagation(); $('lightbox').firstElementChild.src = target.src; $('lightbox').style.display = 'flex'; }
+  else if (action === 'toggle-log') { state.logOpen = !state.logOpen; $('logbox').classList.toggle('open', state.logOpen); $('logHint').textContent = state.logOpen ? 'Hide' : 'Show'; scrollLog(); }
+});
+document.addEventListener('change', (event) => {
+  if (event.target.dataset && event.target.dataset.action === 'verdict') {
+    const select = event.target;
+    const page = state.snap.pages.find((p) => p.id === select.dataset.id);
+    const test = page && page.tests.find((t) => t.key === select.dataset.key);
+    if (!test) return;
+    if (select.value) {
+      // A new verdict: its reason is asked for in a row under the case
+      state.correcting = { key: test.key, expected: select.value };
+      state.correctionNote = '';
+      renderMain();
+      const box = $('correctNote');
+      if (box) box.focus();
+    } else {
+      // "Clear my verdict": back to how the case was. A settled verdict (Claude acted on it) stays as the record of what changed.
+      state.correcting = null;
+      const review = reviewOf(page, test);
+      if (test.status === 'notapplicable') void post('/api/not-applicable', { pageId: page.id, caseIds: [test.caseId], reason: null });
+      if (review && !review.done) void post('/api/review', { pageId: page.id, caseId: test.caseId, expected: null });
+      renderMain();
+    }
+    return;
+  }
+  if (event.target.dataset && event.target.dataset.action === 'guide-language') {
+    state.guideLanguage = event.target.value;
+    try { localStorage.setItem('guideLanguage', state.guideLanguage); } catch { /* ignore */ }
+    return;
+  }
+  if (event.target.dataset && event.target.dataset.action === 'headless') {
+    state.headless = !event.target.checked;
+    try { localStorage.setItem('headless', String(state.headless)); } catch { /* ignore */ }
+    renderMain();
+  }
+});
+document.addEventListener('input', (event) => {
+  if (event.target.id === 'search') { state.search = event.target.value; renderMain(); }
+  else if (event.target.id === 'naReason') state.naReason = event.target.value;
+  else if (event.target.id === 'correctNote') state.correctionNote = event.target.value;
+  else if (event.target.id === 'shareMessage') state.shareMessage = event.target.value;
+  else if (event.target.id === 'authorName') state.authorName = event.target.value;
+  else if (event.target.id === 'authorEmail') state.authorEmail = event.target.value;
+});
+$('lightbox').addEventListener('click', () => { $('lightbox').style.display = 'none'; });
+document.addEventListener('keydown', (event) => {
+  if (event.target.id === 'correctNote' && event.key === 'Enter') { event.preventDefault(); document.querySelector('[data-action="verdict-save"]')?.click(); }
+  if (event.target.id === 'correctNote' && event.key === 'Escape') document.querySelector('[data-action="verdict-cancel"]')?.click();
+  if (event.target.id === 'shareMessage' && event.key === 'Enter') { event.preventDefault(); document.querySelector('[data-action="team-share"]')?.click(); }
+});
+
+/* ---------- run finished: the tab title and a notification ---------- */
+const BASE_TITLE = document.title;
+/** Asks once whether the dashboard may say when the runs have finished (only on a click: browsers ask only then). */
+function askToNotify() {
+  try { if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission(); } catch { /* not offered */ }
+}
+function afterStateChange(wasBusy) {
+  const snap = state.snap;
+  const run = snap.run;
+  if (busy()) {
+    state.batchStartedAt ??= run.startedAt;
+    document.title = `▶ ${run.done}/${run.total} ${run.pageTitle} · ${BASE_TITLE}`;
+    return;
+  }
+  document.title = BASE_TITLE;
+  if (!wasBusy || !run || !run.finishedAt) return;
+  // The run (and the queue, if there was one) has ended: say how it went
+  const since = state.batchStartedAt ?? run.startedAt;
+  state.batchStartedAt = undefined;
+  const runs = snap.history.filter((entry) => (entry.finishedAt ?? 0) >= since);
+  const total = (key) => runs.reduce((sum, entry) => sum + (entry.summary[key] ?? 0), 0);
+  const message = runs.some((entry) => entry.crashed) ? 'Some pages could not run - open the dashboard for why.' : `${total('passed')} passed, ${total('failed')} failed${total('blocked') ? `, ${total('blocked')} blocked` : ''}`;
+  const title = runs.length > 1 ? `${runs.length} pages finished` : `${run.pageTitle} finished`;
+  toast(`${title}: ${message}`);
+  try {
+    if ('Notification' in window && Notification.permission === 'granted' && document.hidden) new Notification(title, { body: message, tag: 'ecs-run' });
+  } catch { /* not offered */ }
+}
+
+/* ---------- live data ---------- */
+const logLines = [];
+function scrollLog() { const box = $('logtext'); box.scrollTop = box.scrollHeight; }
+function showLog() { $('logtext').textContent = logLines.join('\n'); if (state.logOpen) scrollLog(); }
+
+function connect() {
+  const source = new EventSource('/api/events');
+  source.onopen = () => { if (state.restarting) { location.reload(); return; } state.connected = true; renderHeader(); };
+  source.addEventListener('state', (event) => { const wasBusy = busy(); state.snap = JSON.parse(event.data); afterStateChange(wasBusy); state.connected = true; if (!['overview', 'guide'].includes(state.view) && !state.snap.pages.some((p) => p.id === state.view)) state.view = 'overview'; render(); });
+  source.addEventListener('log-history', (event) => { logLines.length = 0; logLines.push(...JSON.parse(event.data)); showLog(); });
+  source.addEventListener('log', (event) => { logLines.push(JSON.parse(event.data)); if (logLines.length > 800) logLines.shift(); showLog(); });
+  source.onerror = () => { state.connected = false; renderHeader(); };
+}
+connect();
+setInterval(() => { if (state.snap && !busy()) renderMain(); }, 60000); // keeps "5 min ago" fresh
+setInterval(() => { if (state.snap && busy()) renderMain(); }, 20000); // keeps the time left fresh while a run is going
+</script>
+</body>
+</html>

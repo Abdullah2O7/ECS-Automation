@@ -1,0 +1,14 @@
+# One line ending (LF) in the repository for every text file, whatever the computer: Windows and the rest never show
+# a whole file as changed because of line endings.
+* text=auto eol=lf
+# Office files, pictures and fonts are binary: never merged or converted.
+*.xlsx binary
+*.docx binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.bmp binary
+*.woff2 binary
+# Windows command files run in cmd.exe, which needs Windows line endings
+*.cmd text eol=crlf

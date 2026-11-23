@@ -1,0 +1,51 @@
+{
+  "name": "ecs-automation",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "clean": "rimraf test-output/reports/allure-results && rimraf test-output/reports/Allure-Report && rimraf test-output/logs/logs.log",
+    "test:ci": "playwright test",
+    "test": "npm run clean && (playwright test || (npm run report && exit 1)) && npm run report",
+    "test:headed": "cross-env HEADLESS=false npm run test",
+    "test:unit": "playwright test --config=playwright.unit.config.ts",
+    "test:list": "playwright test --list",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint",
+    "report": "allure generate test-output/reports/allure-results",
+    "report:open": "allure open test-output/reports/Allure-Report",
+    "predashboard": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/scripts/team/latest-on-start.ts",
+    "dashboard": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/scripts/dashboard/server.ts",
+    "sql": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/scripts/run-sql.ts",
+    "sql:dry": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/scripts/run-sql.ts --dry-run",
+    "clean:runtime": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/scripts/clean-runtime.ts",
+    "story:new": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/scripts/story/new-story.ts",
+    "story:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/scripts/story/check-stories.ts",
+    "guide": "playwright test --config=playwright.guide.config.ts",
+    "guide:en": "cross-env GUIDE_LANGUAGE=en playwright test --config=playwright.guide.config.ts",
+    "team:setup": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/scripts/team/team-setup.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/mssql": "^12.3.0",
+    "@types/node": "^26.6.2",
+    "allure": "^3.18.0",
+    "allure-js-commons": "^3.12.2",
+    "allure-playwright": "^3.12.2",
+    "cross-env": "^10.1.0",
+    "docx": "^9.6.1",
+    "dotenv": "^18.0.1",
+    "eslint": "10.12.0",
+    "eslint-plugin-playwright": "2.12.1",
+    "exceljs": "^4.4.0",
+    "jszip": "^3.10.1",
+    "mssql": "^12.7.2",
+    "rimraf": "^6.1.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0",
+    "winston": "^3.19.0"
+  }
+}

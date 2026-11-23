@@ -1,0 +1,12 @@
+{
+  // Open with VS Code Insiders:  code-insiders ECS.Automation.code-workspace
+  // (VS Code stable reads the same file.) Editor settings live in .vscode/, shared with whoever opens the folder.
+  "folders": [{ "path": ".", "name": "ECS.Automation" }],
+  "extensions": {
+    "recommendations": [
+      "ms-playwright.playwright",
+      "dbaeumer.vscode-eslint",
+      "ms-mssql.mssql"
+    ]
+  }
+}
